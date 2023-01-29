@@ -1,4 +1,11 @@
-import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { NextPage } from "next";
 import styles from "../styles/Home.module.css";
 import { createWorker } from "tesseract.js";
@@ -6,14 +13,24 @@ import { createWorker } from "tesseract.js";
 export interface PageProps {
   data: number;
 }
-const worker = createWorker({
-  logger: (m) => console.log(m),
-});
 
 const Home: NextPage<PageProps> = ({ data }) => {
   const [ocr, setOcr] = useState<string>("");
-  const [readedText, setReaadedText] = useState<string>("");
+  const [readedText, setReadedText] = useState<string>("");
+  const [progress, setProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const worker = useMemo(
+    () =>
+      createWorker({
+        logger: (m) => {
+          console.log(m);
+          if (m.status === "recognizing text")
+            setProgress(m.progress?.toFixed(2) * 100);
+        },
+      }),
+    []
+  );
 
   const doOCR = async (objURL: string) => {
     const awaitedWorker = await worker;
@@ -21,7 +38,7 @@ const Home: NextPage<PageProps> = ({ data }) => {
     await awaitedWorker.loadLanguage("rus");
     await awaitedWorker.initialize("rus");
     const imageRec = await awaitedWorker.recognize(objURL);
-    console.log("end", imageRec.data);
+    setReadedText(imageRec.data.text);
   };
 
   const handleUpload = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -38,39 +55,60 @@ const Home: NextPage<PageProps> = ({ data }) => {
   const handleClearFile = useCallback(() => {
     if (fileInputRef && fileInputRef?.current) fileInputRef.current.value = "";
     setOcr("");
+    setReadedText("");
   }, []);
 
   const handleRecognizeFile = useCallback(() => {
     ocr && doOCR(ocr);
   }, [ocr]);
 
+  const handleFilter = (text: string): string[] =>
+    text
+      .split("\n")
+      .filter((value) => value)
+      .map((value) => value.replace(/[^а-яА-Я]/gi, "").toUpperCase());
+
   return (
-    <div className={styles.container}>
+    <div className="bg-slate-300">
+      <h1 className="text-yellow-100">{data}</h1>
       <main className={styles.main}>
-        <h1 className="text-yellow-100">{data}</h1>
+        <div className="flex flex-col justify-center gap-3">
+          <div className="max-w-xs h-auto">
+            <img src={ocr} />
+          </div>
 
-        <img className="w-82 h-auto" src={ocr} />
+          <input
+            ref={fileInputRef}
+            onChange={handleUpload}
+            type="file"
+            accept="image"
+          />
 
-        <button
-          className="bg-slate-400 border-1 p-2 "
-          onClick={handleRecognizeFile}
-        >
-          Recognize
-        </button>
+          <div className="flex gap-3 self-center">
+            <button
+              className="bg-slate-600 border-1 p-2 w-fit text-zinc-50"
+              onClick={handleRecognizeFile}
+            >
+              Recognize
+            </button>
 
-        <input
-          ref={fileInputRef}
-          onChange={handleUpload}
-          type="file"
-          accept="image"
-        />
+            <button
+              className="bg-slate-600 border-1 p-2 w-fit text-zinc-50"
+              onClick={handleClearFile}
+            >
+              Clear File
+            </button>
+          </div>
+        </div>
 
-        <button
-          className="bg-slate-400 border-1 p-2 "
-          onClick={handleClearFile}
-        >
-          Clear File
-        </button>
+        <div className="whitespace-pre-wrap max-w-xs">
+          {progress && <div>{`${progress} %`}</div>}
+          {handleFilter(readedText).map((team, index) => (
+            <p>
+              {team} - {index + 1}
+            </p>
+          ))}
+        </div>
       </main>
     </div>
   );
